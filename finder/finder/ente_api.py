@@ -53,6 +53,10 @@ class PublicAlbum:
     def info(self) -> dict:
         return self._get("/public-collection/info").json()
 
+    def album_name(self) -> str:
+        c = self.info()["collection"]
+        return open_box(c["encryptedName"], c["nameDecryptionNonce"], self.key).decode()
+
     def files(self) -> list[RemoteFile]:
         by_id: dict[int, RemoteFile] = {}
         since = 0
