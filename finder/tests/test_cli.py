@@ -73,5 +73,7 @@ def test_remove_folder(env, monkeypatch):
 def test_http_client_logs_are_quiet(env):
     import logging
 
+    logging.getLogger("httpx").setLevel(logging.NOTSET)
+    logging.getLogger().setLevel(logging.INFO)
     cli.main(["excluded"])
-    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+    assert logging.getLogger("httpx").level >= logging.WARNING
