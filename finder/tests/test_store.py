@@ -76,3 +76,16 @@ def test_forget_faces(tmp_path):
     s.forget_faces()
     assert s.face_rows() == [] and s.excluded_people() == []
     assert s.pending("faces") == [1]
+
+
+def test_old_excluded_people_table_is_upgraded(tmp_path):
+    import sqlite3
+
+    db = sqlite3.connect(tmp_path / "f.db")
+    db.execute("CREATE TABLE excluded_people (id INTEGER PRIMARY KEY, emb BLOB NOT NULL)")
+    db.commit()
+    db.close()
+    s = Store(tmp_path / "f.db")
+    s.set_faces(1, [(face(), unit(1, 0))])
+    cluster_faces(s)
+    assert s.exclude_cluster(1) >= 1

@@ -52,7 +52,21 @@ class FaceRow:
 class Store:
     def __init__(self, path: str | Path):
         self.db = sqlite3.connect(str(path), check_same_thread=False)
+        self._upgrade_excluded_people()
         self.db.executescript(_SCHEMA)
+
+    def _upgrade_excluded_people(self) -> None:
+        """The first version kept one mean face per excluded person in
+        excluded_people.emb; move those into excluded_faces."""
+        cols = [r[1] for r in self.db.execute("PRAGMA table_info(excluded_people)")]
+        if "emb" not in cols:
+            return
+        with self.db:
+            self.db.execute("ALTER TABLE excluded_people RENAME TO excluded_people_v1")
+            self.db.executescript(_SCHEMA)
+            self.db.execute("INSERT INTO excluded_people(id) SELECT id FROM excluded_people_v1")
+            self.db.execute("INSERT INTO excluded_faces(person_id, emb) SELECT id, emb FROM excluded_people_v1")
+            self.db.execute("DROP TABLE excluded_people_v1")
 
     # files and stage progress
 
