@@ -34,6 +34,7 @@ const copy = {
         results: (n: number, q: string) => `${n} photos for “${q}”`,
         no_face: "We couldn't see a face. Try a clear selfie in good light.",
         many_faces: "Please use a photo with just you in it.",
+        too_large: "That photo is too large. Try a normal selfie.",
         slow_down: "Too many tries. Wait a minute and try again.",
         failed: "Something went wrong. Please try again.",
         nothing: "No photos found.",
@@ -50,6 +51,7 @@ const copy = {
         no_face:
             "Nous n'avons pas vu de visage. Essayez un selfie net et bien éclairé.",
         many_faces: "Utilisez une photo où vous êtes seul(e).",
+        too_large: "Cette photo est trop lourde. Essayez un selfie normal.",
         slow_down: "Trop d'essais. Attendez une minute et réessayez.",
         failed: "Une erreur est survenue. Veuillez réessayer.",
         nothing: "Aucune photo trouvée.",

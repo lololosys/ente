@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
     applyFinderFilter,
     fetchFinderConfig,
+    findMe,
 } from "../src/public-album/finder/filter";
 
 const file = (id: number) => ({ id }) as unknown as EnteFile;
@@ -79,5 +80,25 @@ describe("fetchFinderConfig", () => {
                 "X-Auth-Access-Token"
             ],
         ).toBe("T");
+    });
+});
+
+describe("findMe", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    test("a selfie that is too large gets its own error", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(() =>
+                Promise.resolve(
+                    new Response(JSON.stringify({ error: "too_large" }), {
+                        status: 413,
+                    }),
+                ),
+            ),
+        );
+        expect(await findMe("T", new File(["x"], "s.jpg"))).toEqual({
+            error: "too_large",
+        });
     });
 });

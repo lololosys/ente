@@ -127,3 +127,25 @@ def test_selfie_of_excluded_person_returns_nothing(tmp_path):
     # A selfie of the excluded person, matching their profile face but not the mean
     f = Finder(s, models=None, face_threshold=0.6, embed_selfie=lambda b: unit(1, 0.75, 0))
     assert f.find_me(b"selfie").file_ids == []
+
+
+def test_huge_selfie_is_refused_before_decoding(tmp_path, monkeypatch):
+    import struct
+    import zlib
+
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(buf, "PNG")
+    png = bytearray(buf.getvalue())
+    ihdr = png[12:29]  # b"IHDR" + 13 bytes of data
+    ihdr[4:12] = struct.pack(">II", 20000, 20000)
+    png[12:29] = ihdr
+    png[29:33] = struct.pack(">I", zlib.crc32(bytes(ihdr)))
+
+    def no_load(self):
+        raise AssertionError("decoded a huge image")
+
+    monkeypatch.setattr(Image.Image, "load", no_load)
+    from finder.query import TooLarge
+
+    with pytest.raises(TooLarge):
+        Finder(Store(tmp_path / "f.db"), models=object(), face_threshold=0.6).find_me(bytes(png))

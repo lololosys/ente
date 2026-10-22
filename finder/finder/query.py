@@ -33,6 +33,15 @@ class ManyFaces(Exception):
     pass
 
 
+class TooLarge(Exception):
+    pass
+
+
+#: Refuse selfies above this many pixels before decoding them (a small file
+#: can still expand to gigabytes).
+MAX_SELFIE_PIXELS = 40_000_000
+
+
 @dataclass(frozen=True)
 class FindResult:
     file_ids: list[int]
@@ -66,7 +75,16 @@ class Finder:
 
     def _selfie_embedding(self, data: bytes) -> np.ndarray:
         try:
-            img = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+            img = Image.open(io.BytesIO(data))
+        except Image.DecompressionBombError:
+            raise TooLarge() from None
+        except Exception:
+            raise NoFace() from None
+        if img.width * img.height > MAX_SELFIE_PIXELS:
+            raise TooLarge()
+        try:
+            img.draft("RGB", (SELFIE_SIDE, SELFIE_SIDE))  # JPEG: decode at reduced size
+            img = ImageOps.exif_transpose(img).convert("RGB")
         except Exception:
             raise NoFace() from None
         img.thumbnail((SELFIE_SIDE, SELFIE_SIDE))

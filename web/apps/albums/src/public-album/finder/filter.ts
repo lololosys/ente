@@ -22,7 +22,8 @@ export type FinderFilter =
     | { kind: "folder"; name: string; fileIDs: number[] }
     | { kind: "find-me" | "search"; label: string; fileIDs: number[] };
 
-export type FindMeError = "no_face" | "many_faces" | "slow_down" | "failed";
+export type FindMeError =
+    "no_face" | "many_faces" | "too_large" | "slow_down" | "failed";
 
 const headers = (accessToken: string) => ({
     "X-Auth-Access-Token": accessToken,
@@ -55,6 +56,7 @@ export const findMe = async (
             body,
         });
         if (res.status == 429) return { error: "slow_down" };
+        if (res.status == 413) return { error: "too_large" };
         const json = (await res.json()) as {
             fileIDs?: number[];
             error?: string;
@@ -62,7 +64,9 @@ export const findMe = async (
         if (res.ok && json.fileIDs) return { fileIDs: json.fileIDs };
         return {
             error:
-                json.error == "no_face" || json.error == "many_faces"
+                json.error == "no_face" ||
+                json.error == "many_faces" ||
+                json.error == "too_large"
                     ? json.error
                     : "failed",
         };

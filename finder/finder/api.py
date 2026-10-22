@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from .query import Finder, ManyFaces, NoFace
+from .query import Finder, ManyFaces, NoFace, TooLarge
 
 MAX_SELFIE = 8 * 1024 * 1024
 MAX_QUERY = 200
@@ -111,6 +111,8 @@ def create_app(finder: Finder, verify: Callable[[str, str | None], bool]) -> Sta
             return JSONResponse({"error": "no_face"}, status_code=422)
         except ManyFaces:
             return JSONResponse({"error": "many_faces"}, status_code=422)
+        except TooLarge:
+            return JSONResponse({"error": "too_large"}, status_code=413)
         finally:
             del selfie
         return JSONResponse({"fileIDs": result.file_ids, "faces": result.faces})
