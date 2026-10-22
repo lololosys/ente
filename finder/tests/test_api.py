@@ -30,7 +30,7 @@ def client(tmp_path):
         return unit(1, 0)
 
     f = Finder(s, models=None, face_threshold=0.6, embed_selfie=selfie, embed_text=lambda q: unit(1, 0))
-    return TestClient(create_app(f, TOKEN))
+    return TestClient(create_app(f, lambda token, jwt: token == TOKEN))
 
 
 H = {"X-Auth-Access-Token": TOKEN}
@@ -103,3 +103,13 @@ def test_logs_have_no_selfie_or_token(client, caplog):
     client.post("/find-me", files={"selfie": ("s.jpg", b"SELFIEBYTES", "image/jpeg")}, headers=H)
     client.get("/search", params={"q": "cake"}, headers=H)
     assert "SELFIEBYTES" not in caplog.text and TOKEN not in caplog.text
+
+
+def test_revoked_link_is_refused(tmp_path):
+    s = Store(tmp_path / "f.db")
+    f = Finder(s, models=None, face_threshold=0.6)
+    live = {TOKEN}
+    c = TestClient(create_app(f, lambda token, jwt: token in live))
+    assert c.get("/config", headers=H).status_code == 200
+    live.clear()  # the owner deleted the link in Ente
+    assert c.get("/config", headers=H).status_code == 401

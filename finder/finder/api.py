@@ -3,10 +3,10 @@
 Every call needs the wedding link's access token. Selfies are read into
 memory, never spooled to disk, and never logged."""
 
-import hmac
 import re
 import time
 from collections import defaultdict, deque
+from collections.abc import Callable
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -65,24 +65,26 @@ def multipart_field(body: bytes, content_type: str, name: str) -> bytes | None:
     return None
 
 
-def create_app(finder: Finder, token: str) -> Starlette:
+def create_app(finder: Finder, verify: Callable[[str, str | None], bool]) -> Starlette:
+    """`verify(token, jwt)` says whether a share link is live and is ours."""
     limiter = RateLimiter()
 
-    def authorized(request: Request) -> bool:
-        given = request.headers.get("x-auth-access-token", "")
-        return hmac.compare_digest(given.encode(), token.encode())
+    async def authorized(request: Request) -> bool:
+        token = request.headers.get("x-auth-access-token", "")
+        jwt = request.headers.get("x-auth-access-token-jwt")
+        return await run_in_threadpool(verify, token, jwt)
 
     def deny() -> JSONResponse:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     async def config(request: Request):
-        if not authorized(request):
+        if not await authorized(request):
             return deny()
         folders = [{"name": f.name, "coverFileID": f.cover_file_id, "fileIDs": f.file_ids} for f in finder.folders()]
         return JSONResponse({"folders": folders, "features": {"findMe": True, "search": True}})
 
     async def search(request: Request):
-        if not authorized(request):
+        if not await authorized(request):
             return deny()
         if not limiter.allow("search", client_ip(request)):
             return JSONResponse({"error": "slow_down"}, status_code=429)
@@ -90,7 +92,7 @@ def create_app(finder: Finder, token: str) -> Starlette:
         return JSONResponse({"fileIDs": await run_in_threadpool(finder.search, q)})
 
     async def find_me(request: Request):
-        if not authorized(request):
+        if not await authorized(request):
             return deny()
         if not limiter.allow("find-me", client_ip(request)):
             return JSONResponse({"error": "slow_down"}, status_code=429)
@@ -127,6 +129,8 @@ def app():
     import logging
 
     from .config import Config
+    from .ente_api import PublicAlbum
+    from .links import LinkVerifier
     from .models import Models
     from .store import Store
 
@@ -136,4 +140,6 @@ def app():
     # Load the sessions now so the first guest doesn't wait for them.
     models.face_detect, models.face_embed, models.clip_text, models.tokenizer
     finder = Finder(Store(config.db_path), models, config.face_threshold)
-    return create_app(finder, config.main.token)
+    main = PublicAlbum(config.museum_url, config.main.token, config.main.key)
+    verifier = LinkVerifier(config.museum_url, main.info()["collection"]["id"])
+    return create_app(finder, verifier.check)
