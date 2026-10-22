@@ -41,7 +41,11 @@ def index_album(
         todo = todo[:limit]
     for n, fid in enumerate(todo, 1):
         f = files[fid]
-        img = load_image(f, album)
+        try:
+            img = load_image(f, album)
+        except Exception as e:  # network, expired URL, bad decrypt: retry next run
+            log.warning("file %d: download failed: %s", fid, type(e).__name__)
+            continue
         if img is None:
             log.warning("file %d: could not decode", fid)
             continue

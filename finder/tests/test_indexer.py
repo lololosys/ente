@@ -54,3 +54,21 @@ def test_failing_stage_leaves_file_pending_and_continues(tmp_path):
 
     index_album(FakeAlbum("w", [rf(1), rf(2)]), s, {"faces": boom})
     assert s.pending("faces") == [1]
+
+
+def test_download_error_skips_file_and_continues(tmp_path, caplog):
+    import httpx
+
+    class Flaky(FakeAlbum):
+        def original(self, f):
+            if f.id == 1:
+                req = httpx.Request("GET", "https://store.example/obj?X-Amz-Signature=SECRET")
+                raise httpx.HTTPStatusError("403", request=req, response=httpx.Response(403, request=req))
+            return super().original(f)
+
+    s = Store(tmp_path / "f.db")
+    calls = []
+    index_album(Flaky("w", [rf(1), rf(2)]), s, {"faces": lambda f, img: calls.append(f.id)})
+    assert calls == [2]
+    assert s.pending("faces") == [1]
+    assert "SECRET" not in caplog.text
