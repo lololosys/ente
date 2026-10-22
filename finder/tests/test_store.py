@@ -61,7 +61,7 @@ def test_exclusion_survives_reclustering(tmp_path):
     s.set_faces(3, [(face(), unit(0.2, 1))])  # new photos shift cluster numbers
     cluster_faces(s)
     (person,) = s.excluded_people()
-    assert person[0] == pid and float(person[1] @ unit(1, 0)) > 0.99
+    assert person[0] == pid and float((person[1] @ unit(1, 0)).max()) > 0.99
     s.include_person(pid)
     assert s.excluded_people() == []
 

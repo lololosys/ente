@@ -97,3 +97,33 @@ def test_find_me_real_selfie_finds_same_person(tmp_path, models):
         s.set_faces(fid, [(f, embed_face(models, img, f)) for f in detect_faces(models, img)])
     r = Finder(s, models, face_threshold=0.6).find_me(jpeg_bytes(fixture_image("person_a_1.jpg")))
     assert r.file_ids == [1] and r.faces == 1
+
+
+def test_excluded_member_far_from_mean_is_never_returned(tmp_path):
+    """A side-profile face can sit well below 0.76 to its cluster's mean."""
+    s = Store(tmp_path / "f.db")
+    for fid in range(1, 6):  # five frontal photos of the excluded child
+        s.set_faces(fid, [(FACE, unit(0, 1, 0.01 * fid))])
+    s.set_faces(6, [(FACE, unit(1.2, 1, 0))])  # the child's profile, ~0.74 to the mean
+    s.set_faces(7, [(FACE, unit(1, -0.5, 0))])  # someone else, 0.40 to the profile
+    rows = s.face_rows()
+    s.set_clusters({r.id: (2 if r.file_id == 7 else 1) for r in rows})
+    s.exclude_cluster(1)
+    # A parent's selfie: 0.66 to the profile face, far from the frontal ones.
+    f = Finder(s, models=None, face_threshold=0.6, embed_selfie=lambda b: unit(1, -0.15, 0))
+    ids = f.find_me(b"selfie").file_ids
+    assert 6 not in ids
+    assert ids == [7]
+
+
+def test_selfie_of_excluded_person_returns_nothing(tmp_path):
+    s = Store(tmp_path / "f.db")
+    s.set_faces(1, [(FACE, unit(0, 1, 0))])
+    s.set_faces(2, [(FACE, unit(0.9, 1, 0))])
+    s.set_faces(3, [(FACE, unit(1, 0, 0))])
+    rows = s.face_rows()
+    s.set_clusters({rows[0].id: 1, rows[1].id: 1, rows[2].id: 2})
+    s.exclude_cluster(1)
+    # A selfie of the excluded person, matching their profile face but not the mean
+    f = Finder(s, models=None, face_threshold=0.6, embed_selfie=lambda b: unit(1, 0.75, 0))
+    assert f.find_me(b"selfie").file_ids == []

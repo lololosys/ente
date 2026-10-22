@@ -27,7 +27,8 @@ CREATE INDEX IF NOT EXISTS faces_file ON faces(file_id);
 CREATE TABLE IF NOT EXISTS clip (file_id INTEGER PRIMARY KEY, emb BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS captions (file_id INTEGER PRIMARY KEY, en TEXT, fr TEXT, tags TEXT);
 CREATE TABLE IF NOT EXISTS folders (name TEXT NOT NULL, file_id INTEGER NOT NULL, pos INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS excluded_people (id INTEGER PRIMARY KEY, emb BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS excluded_people (id INTEGER PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS excluded_faces (person_id INTEGER NOT NULL, emb BLOB NOT NULL);
 """
 
 
@@ -105,27 +106,34 @@ class Store:
             self.db.executemany("UPDATE faces SET cluster = ? WHERE id = ?", [(c, i) for i, c in assignment.items()])
 
     def exclude_cluster(self, cluster: int) -> int:
-        """Remembers the person by the cluster's mean face, so the exclusion
-        holds when clusters are renumbered or new photos arrive."""
+        """Remembers every face of the cluster, so the exclusion holds when
+        clusters are renumbered, and covers profiles far from the average."""
         embs = [r.emb for r in self.face_rows() if r.cluster == cluster]
         if not embs:
             raise KeyError(f"no faces in cluster {cluster}")
-        mean = np.mean(embs, axis=0)
-        mean /= np.linalg.norm(mean)
         with self.db:
-            cur = self.db.execute("INSERT INTO excluded_people(emb) VALUES (?)", (to_blob(mean),))
-        return int(cur.lastrowid)
+            person = int(self.db.execute("INSERT INTO excluded_people DEFAULT VALUES").lastrowid)
+            self.db.executemany(
+                "INSERT INTO excluded_faces(person_id, emb) VALUES (?, ?)", [(person, to_blob(e)) for e in embs]
+            )
+        return person
 
     def include_person(self, person_id: int) -> None:
         with self.db:
+            self.db.execute("DELETE FROM excluded_faces WHERE person_id = ?", (person_id,))
             self.db.execute("DELETE FROM excluded_people WHERE id = ?", (person_id,))
 
     def excluded_people(self) -> list[tuple[int, np.ndarray]]:
-        return [(r[0], from_blob(r[1])) for r in self.db.execute("SELECT id, emb FROM excluded_people ORDER BY id")]
+        """(person id, their faces as rows) for every excluded person."""
+        faces: dict[int, list[np.ndarray]] = {p: [] for (p,) in self.db.execute("SELECT id FROM excluded_people")}
+        for person, emb in self.db.execute("SELECT person_id, emb FROM excluded_faces"):
+            faces.setdefault(person, []).append(from_blob(emb))
+        return [(p, np.stack(e)) for p, e in sorted(faces.items()) if e]
 
     def forget_faces(self) -> None:
         with self.db:
             self.db.execute("DELETE FROM faces")
+            self.db.execute("DELETE FROM excluded_faces")
             self.db.execute("DELETE FROM excluded_people")
             self.db.execute("UPDATE files SET done_faces = 0")
         self.db.execute("VACUUM")

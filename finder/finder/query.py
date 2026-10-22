@@ -79,10 +79,15 @@ class Finder:
 
     def find_me(self, selfie: bytes) -> FindResult:
         query = self._embed_selfie(selfie)
-        excluded = [emb for _, emb in self.store.excluded_people()]
+        people = [faces for _, faces in self.store.excluded_people()]
+        excluded = np.concatenate(people) if people else np.empty((0, query.shape[0]), np.float32)
+        # Someone who asked to be excluded can't find themselves either; the
+        # stricter same-person rule keeps look-alike relatives searchable.
+        if len(excluded) and float((excluded @ query).max()) >= SAME_PERSON:
+            return FindResult([], 1)
         best: dict[int, float] = {}
         for row in self.store.face_rows():
-            if any(float(row.emb @ e) >= SAME_PERSON for e in excluded):
+            if len(excluded) and float((excluded @ row.emb).max()) >= self.face_threshold:
                 continue
             score = float(row.emb @ query)
             if score >= self.face_threshold and score > best.get(row.file_id, -1):
