@@ -51,3 +51,20 @@ def test_forget_faces_needs_yes(env):
     with pytest.raises(SystemExit):
         cli.main(["forget-faces"])
     assert env.face_rows() != []
+
+
+def test_set_folder_reads_ids_from_stdin(env, monkeypatch):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("12\n 10\n\n11\n"))
+    cli.main(["set-folder", "Mairie"])
+    assert env.folders()["Mairie"] == [10, 11, 12]
+
+
+def test_remove_folder(env, monkeypatch):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
+    cli.main(["set-folder", "Old"])
+    cli.main(["remove-folder", "Old"])
+    assert "Old" not in env.folders()

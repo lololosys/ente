@@ -1,5 +1,5 @@
 # Rebuilds the photos and albums apps and lays them over an existing ente/web image, so
-# the other apps (albums, accounts, auth, ...) stay exactly as published.
+# the other apps (accounts, auth, cast, ...) stay exactly as published.
 #
 #   docker build -f web/Dockerfile.photos-overlay \
 #       --build-arg BASE=ghcr.io/ente/web:latest -t ente-web-folders .

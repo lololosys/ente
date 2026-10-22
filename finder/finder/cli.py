@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import sys
 
 from .config import Config
 from .ente_api import PublicAlbum
@@ -29,6 +30,10 @@ def main(argv: list[str] | None = None) -> None:
     ix.add_argument("--only", choices=["faces", "clip", "caption", "folders"])
     ix.add_argument("--limit", type=int)
     sub.add_parser("models", help="download and verify Ente's models")
+    sf = sub.add_parser("set-folder", help="set a folder's photo ids, one per line on stdin")
+    sf.add_argument("name")
+    rf = sub.add_parser("remove-folder")
+    rf.add_argument("name")
     sub.add_parser("clusters", help="list the people found, biggest first")
     ex = sub.add_parser("exclude", help="never return this person in find-me")
     ex.add_argument("cluster", type=int)
@@ -45,6 +50,10 @@ def main(argv: list[str] | None = None) -> None:
     config = Config.from_env()
     config.data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(config.db_path)
+    if args.cmd == "set-folder":
+        store.set_folder(args.name, [int(line) for line in sys.stdin if line.strip()])
+    if args.cmd == "remove-folder":
+        store.set_folder(args.name, [])
     if args.cmd == "clusters":
         people: dict[int, list[int]] = {}
         for r in store.face_rows():

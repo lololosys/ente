@@ -74,6 +74,7 @@ class Store:
     def set_folder(self, name: str, file_ids: list[int]) -> None:
         with self.db:
             self.db.execute("DELETE FROM folders WHERE name = ?", (name,))
+            # An empty list removes the folder.
             self.db.executemany(
                 "INSERT INTO folders(name, file_id, pos) VALUES (?, ?, ?)",
                 [(name, fid, i) for i, fid in enumerate(sorted(file_ids))],
