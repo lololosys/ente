@@ -24,6 +24,8 @@ def build_stages(config: Config, store: Store, only: str | None) -> dict[str, St
 
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    # Request lines carry signed download URLs; keep them out of the logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     p = argparse.ArgumentParser(prog="finder")
     sub = p.add_subparsers(dest="cmd", required=True)
     ix = sub.add_parser("index", help="index the shared album")

@@ -68,3 +68,10 @@ def test_remove_folder(env, monkeypatch):
     cli.main(["set-folder", "Old"])
     cli.main(["remove-folder", "Old"])
     assert "Old" not in env.folders()
+
+
+def test_http_client_logs_are_quiet(env):
+    import logging
+
+    cli.main(["excluded"])
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
