@@ -18,6 +18,13 @@ import type { TripLayoutProps } from "@/public-album/components/TripLayout";
 import { setPublicAlbumsCredentials } from "@/public-album/data/auth/public-link-credentials";
 import { ActiveDownloadStatusNotifications } from "@/public-album/download/components/ActiveDownloadStatusNotifications";
 import { downloadManager } from "@/public-album/download/services/download-manager";
+import {
+    applyFinderFilter,
+    fetchFinderConfig,
+    type FinderConfig,
+    type FinderFilter,
+} from "@/public-album/finder/filter";
+import { FinderBar } from "@/public-album/finder/FinderBar";
 import { thumbnailManager } from "@/public-album/media/thumbnails/thumbnail-manager";
 import type { UploadProps } from "@/public-album/upload/components/Upload";
 import {
@@ -152,6 +159,12 @@ export default function PublicAlbumPage() {
         undefined,
     );
     const [errorMessage, setErrorMessage] = useState<string>("");
+    const [finderConfig, setFinderConfig] = useState<FinderConfig | undefined>(
+        undefined,
+    );
+    const [finderFilter, setFinderFilter] = useState<FinderFilter | undefined>(
+        undefined,
+    );
     const [loading, setLoading] = useState(true);
     const [isPasswordProtected, setIsPasswordProtected] = useState(false);
     const [uploadTypeSelectorView, setUploadTypeSelectorView] = useState(false);
@@ -323,6 +336,9 @@ export default function PublicAlbumPage() {
                     linkDeviceToken,
                 };
                 setPublicAlbumsCredentials(credentials.current);
+                // Our finder service only answers for the album it was set up
+                // for; anything else leaves the page as it always was.
+                void fetchFinderConfig(accessToken).then(setFinderConfig);
                 await publicAlbumsRemotePull();
             } finally {
                 if (
@@ -694,8 +710,10 @@ export default function PublicAlbumPage() {
         );
     }
 
+    const finderView = applyFinderFilter(publicFiles, finderFilter);
     const disableGrouping =
-        publicCollection?.pubMagicMetadata?.data.sortBy === "fileName";
+        publicCollection?.pubMagicMetadata?.data.sortBy === "fileName" ||
+        finderView.ranked;
     const layout = publicAlbumLayout;
     const quickLinkDateRange = quickLinkDateRangeForFiles(publicFiles);
     const isSingleFileAlbum = publicFiles.length === 1;
@@ -787,8 +805,17 @@ export default function PublicAlbumPage() {
                             </SpacedRow>
                         )}
                     </NavbarBase>
+                    {finderConfig && (
+                        <FinderBar
+                            config={finderConfig}
+                            files={publicFiles}
+                            accessToken={credentials.current.accessToken}
+                            active={finderFilter}
+                            onChange={setFinderFilter}
+                        />
+                    )}
                     <FileListWithViewer
-                        files={publicFiles}
+                        files={finderView.files}
                         disableGrouping={disableGrouping}
                         layout={layout === "masonry" ? "masonry" : "grid"}
                         header={fileListHeader}

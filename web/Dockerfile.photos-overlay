@@ -1,4 +1,4 @@
-# Rebuilds only the photos app and lays it over an existing ente/web image, so
+# Rebuilds the photos and albums apps and lays them over an existing ente/web image, so
 # the other apps (albums, accounts, auth, ...) stay exactly as published.
 #
 #   docker build -f web/Dockerfile.photos-overlay \
@@ -22,8 +22,10 @@ ENV NODE_OPTIONS=--max-old-space-size=3072
 
 RUN npm ci
 RUN npm run build:photos
+RUN npm run build:albums
 
 FROM ${BASE}
 
-RUN rm -rf /out/photos
+RUN rm -rf /out/photos /out/albums
 COPY --from=builder /build/web/apps/photos/out /out/photos
+COPY --from=builder /build/web/apps/albums/out /out/albums
