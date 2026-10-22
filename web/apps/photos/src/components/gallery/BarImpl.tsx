@@ -5,10 +5,16 @@ import {
     matchesAlbumFilter,
     type AlbumFilter,
 } from "@/utils/album-filters";
+import {
+    albumFolderKeyOf,
+    albumFolderRows,
+    type AlbumFolderRow,
+} from "@/utils/album-folders";
 import type { PeopleSortBy } from "@/utils/people-sort";
 import {
     Delete02Icon,
     Download05Icon,
+    Folder01Icon,
     GeometricShapes01Icon,
     Link05Icon,
     PinIcon,
@@ -48,6 +54,7 @@ import { wait } from "ente-utils/promise";
 import { t } from "i18next";
 import React, {
     memo,
+    useCallback,
     useEffect,
     useId,
     useMemo,
@@ -141,11 +148,49 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
         if (albumFilter != activeAlbumFilter) setAlbumFilter(activeAlbumFilter);
     }, [albumFilter, activeAlbumFilter]);
 
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+        () => new Set(),
+    );
+    const folderRows = useMemo(
+        () =>
+            mode == "albums"
+                ? albumFolderRows(visibleCollectionSummaries, expandedFolders)
+                : undefined,
+        [mode, visibleCollectionSummaries, expandedFolders],
+    );
+    const toggleFolder = useCallback(
+        (key: string) =>
+            setExpandedFolders((current) => {
+                const next = new Set(current);
+                if (!next.delete(key)) next.add(key);
+                return next;
+            }),
+        [],
+    );
+
+    // Open the folder that holds the album being shown, so it stays visible.
+    const activeFolderKey = useMemo(
+        () => albumFolderKeyOf(collectionSummaries, activeCollectionID),
+        [collectionSummaries, activeCollectionID],
+    );
+    useEffect(() => {
+        if (activeFolderKey === undefined) return;
+        setExpandedFolders((current) =>
+            current.has(activeFolderKey)
+                ? current
+                : new Set(current).add(activeFolderKey),
+        );
+    }, [activeFolderKey]);
+
     useEffect(() => {
         if (!listRef.current) return;
         let i = -1;
         switch (mode) {
             case "albums":
+                i = (folderRows ?? []).findIndex(
+                    (row) => row.collectionSummary?.id == activeCollectionID,
+                );
+                break;
             case "hidden-albums":
             case "archive-albums":
                 i = visibleCollectionSummaries.findIndex(
@@ -160,6 +205,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     }, [
         mode,
         visibleCollectionSummaries,
+        folderRows,
         activeCollectionID,
         people,
         activePerson,
@@ -171,24 +217,32 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
 
     const itemData = useMemo<ItemData>(
         () =>
-            mode == "albums" ||
-            mode == "hidden-albums" ||
-            mode == "archive-albums"
+            folderRows
                 ? {
-                      type: "collections",
-                      collectionSummaries: visibleCollectionSummaries,
-                      indented: mode == "albums",
+                      type: "album-folders",
+                      rows: folderRows,
                       activeCollectionID: activeCollectionID!,
                       onSelectCollectionID,
+                      onToggleFolder: toggleFolder,
                   }
-                : {
-                      type: "people" as const,
-                      people,
-                      activePerson,
-                      onSelectPerson,
-                  },
+                : mode == "hidden-albums" || mode == "archive-albums"
+                  ? {
+                        type: "collections",
+                        collectionSummaries: visibleCollectionSummaries,
+                        indented: false,
+                        activeCollectionID: activeCollectionID!,
+                        onSelectCollectionID,
+                    }
+                  : {
+                        type: "people" as const,
+                        people,
+                        activePerson,
+                        onSelectPerson,
+                    },
         [
             mode,
+            folderRows,
+            toggleFolder,
             visibleCollectionSummaries,
             activeCollectionID,
             onSelectCollectionID,
@@ -509,6 +563,13 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
 
 type ItemData =
     | {
+          type: "album-folders";
+          rows: AlbumFolderRow[];
+          activeCollectionID: number;
+          onSelectCollectionID: (id: number) => void;
+          onToggleFolder: (key: string) => void;
+      }
+    | {
           type: "collections";
           collectionSummaries: CollectionSummary[];
           indented: boolean;
@@ -524,6 +585,9 @@ type ItemData =
 
 const getItemCount = (data: ItemData) => {
     switch (data.type) {
+        case "album-folders": {
+            return data.rows.length;
+        }
         case "collections": {
             return data.collectionSummaries.length;
         }
@@ -535,6 +599,12 @@ const getItemCount = (data: ItemData) => {
 
 const getItemKey = (index: number, data: ItemData) => {
     switch (data.type) {
+        case "album-folders": {
+            const row = data.rows[index]!;
+            return row.type == "folder"
+                ? `folder-${row.key}-${row.expanded}`
+                : `${data.type}-${row.collectionSummary.id}-${row.depth}-${row.collectionSummary.coverFile?.id}`;
+        }
         case "collections": {
             const collectionSummary = data.collectionSummaries[index]!;
             return `${data.type}-${collectionSummary.id}-${collectionSummary.coverFile?.id}`;
@@ -552,6 +622,33 @@ const ListItem = memo((props: ListChildComponentProps<ItemData>) => {
     let card: React.ReactNode;
 
     switch (data.type) {
+        case "album-folders": {
+            const { activeCollectionID, onSelectCollectionID } = data;
+            const row = data.rows[index]!;
+            card =
+                row.type == "folder" ? (
+                    <FolderBarCard
+                        row={row}
+                        activeCollectionID={activeCollectionID}
+                        onSelectCollectionID={onSelectCollectionID}
+                        onToggleFolder={data.onToggleFolder}
+                    />
+                ) : (
+                    <CollectionBarCard
+                        collectionSummary={row.collectionSummary}
+                        label={row.label}
+                        activeCollectionID={activeCollectionID}
+                        onSelectCollectionID={onSelectCollectionID}
+                        indent={
+                            row.collectionSummary.attributes.has("system")
+                                ? 0
+                                : 20 + row.depth * 20
+                        }
+                    />
+                );
+            break;
+        }
+
         case "collections": {
             const {
                 collectionSummaries,
@@ -567,9 +664,11 @@ const ListItem = memo((props: ListChildComponentProps<ItemData>) => {
                         activeCollectionID,
                         onSelectCollectionID,
                     }}
-                    indented={
+                    indent={
                         data.indented &&
                         !collectionSummary.attributes.has("system")
+                            ? 20
+                            : 0
                     }
                 />
             );
@@ -594,14 +693,26 @@ const ListItem = memo((props: ListChildComponentProps<ItemData>) => {
 
 interface CollectionBarCardProps {
     collectionSummary: CollectionSummary;
-    indented: boolean;
+    /** Shown instead of the album name, e.g. without its folder prefix. */
+    label?: string;
+    /** Left inset in pixels. */
+    indent: number;
     activeCollectionID: number;
     onSelectCollectionID: (collectionID: number) => void;
 }
 
+const indentSx = (indent: number) =>
+    indent
+        ? {
+              marginInlineStart: `${indent}px`,
+              width: `calc(100% - ${indent}px)`,
+          }
+        : undefined;
+
 const CollectionBarCard: React.FC<CollectionBarCardProps> = ({
     collectionSummary,
-    indented,
+    label,
+    indent,
     activeCollectionID,
     onSelectCollectionID,
 }: CollectionBarCardProps) => (
@@ -612,11 +723,7 @@ const CollectionBarCard: React.FC<CollectionBarCardProps> = ({
         }
         title={collectionSummary.name}
         onClick={() => onSelectCollectionID(collectionSummary.id)}
-        sx={
-            indented
-                ? { marginInlineStart: "20px", width: "calc(100% - 20px)" }
-                : undefined
-        }
+        sx={indentSx(indent)}
     >
         <Box aria-hidden sx={{ flexShrink: 0 }}>
             <ItemCard
@@ -624,10 +731,69 @@ const CollectionBarCard: React.FC<CollectionBarCardProps> = ({
                 coverFile={collectionSummary.coverFile}
             />
         </Box>
-        <CardText>{collectionSummary.name}</CardText>
+        <CardText>{label ?? collectionSummary.name}</CardText>
         <CollectionBarCardIcon attributes={collectionSummary.attributes} />
     </BarCard>
 );
+
+interface FolderBarCardProps {
+    row: Extract<AlbumFolderRow, { type: "folder" }>;
+    activeCollectionID: number;
+    onSelectCollectionID: (collectionID: number) => void;
+    onToggleFolder: (key: string) => void;
+}
+
+/**
+ * A folder of albums. Clicking it opens or closes the folder, and also shows
+ * the album named like the folder when there is one.
+ */
+const FolderBarCard: React.FC<FolderBarCardProps> = ({
+    row,
+    activeCollectionID,
+    onSelectCollectionID,
+    onToggleFolder,
+}) => {
+    const head = row.collectionSummary;
+    return (
+        <BarCard
+            aria-label={row.name}
+            aria-expanded={row.expanded}
+            aria-current={head?.id === activeCollectionID ? "true" : undefined}
+            title={row.name}
+            onClick={() => {
+                if (head && !row.expanded) onSelectCollectionID(head.id);
+                onToggleFolder(row.key);
+            }}
+            sx={indentSx(20)}
+        >
+            <Box
+                aria-hidden
+                sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    flexShrink: 0,
+                    color: "text.muted",
+                }}
+            >
+                <HugeiconsIcon icon={Folder01Icon} size={20} />
+            </Box>
+            <CardText>{row.name}</CardText>
+            <Typography variant="small" sx={{ color: "text.muted" }}>
+                {row.albumCount}
+            </Typography>
+            <ExpandMoreIcon
+                sx={{
+                    fontSize: 16,
+                    color: "text.muted",
+                    transform: row.expanded ? undefined : "rotate(-90deg)",
+                }}
+            />
+        </BarCard>
+    );
+};
 
 const CardText: React.FC<React.PropsWithChildren> = ({ children }) => (
     <Typography

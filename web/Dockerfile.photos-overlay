@@ -1,0 +1,29 @@
+# Rebuilds only the photos app and lays it over an existing ente/web image, so
+# the other apps (albums, accounts, auth, ...) stay exactly as published.
+#
+#   docker build -f web/Dockerfile.photos-overlay \
+#       --build-arg BASE=ghcr.io/ente/web:latest -t ente-web-folders .
+ARG BASE=ghcr.io/ente/web:latest
+
+FROM node:24 AS builder
+
+RUN apt-get update && apt-get install -y curl build-essential && rm -rf /var/lib/apt/lists/* && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --target wasm32-unknown-unknown
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /build
+COPY web/ ./web
+COPY rust/ ./rust
+
+WORKDIR /build/web
+
+ENV NEXT_PUBLIC_ENTE_ENDPOINT=ENTE_API_ORIGIN_PLACEHOLDER
+ENV NODE_OPTIONS=--max-old-space-size=3072
+
+RUN npm ci
+RUN npm run build:photos
+
+FROM ${BASE}
+
+RUN rm -rf /out/photos
+COPY --from=builder /build/web/apps/photos/out /out/photos
