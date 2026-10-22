@@ -38,3 +38,25 @@ class FakeAlbum:
 
     def thumbnail(self, f):
         return self.thumbs.get(f.id, jpeg(size=(40, 30)))
+
+
+import os
+from pathlib import Path
+
+import pytest
+
+FIXTURES = Path(__file__).parent / "fixtures"
+MODELS = Path(os.environ.get("FINDER_TEST_MODELS", Path.home() / ".cache/ente-finder/models"))
+
+
+def fixture_image(name: str) -> Image.Image:
+    return Image.open(FIXTURES / name).convert("RGB")
+
+
+@pytest.fixture(scope="session")
+def models():
+    if not (MODELS / "yolov5s_face_640_640_static_b1.onnx").exists():
+        pytest.skip("Ente models not downloaded (python -m finder models)")
+    from finder.models import Models
+
+    return Models(MODELS)
