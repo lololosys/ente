@@ -29,11 +29,46 @@ def main(argv: list[str] | None = None) -> None:
     ix.add_argument("--only", choices=["faces", "clip", "caption", "folders"])
     ix.add_argument("--limit", type=int)
     sub.add_parser("models", help="download and verify Ente's models")
+    sub.add_parser("clusters", help="list the people found, biggest first")
+    ex = sub.add_parser("exclude", help="never return this person in find-me")
+    ex.add_argument("cluster", type=int)
+    inc = sub.add_parser("include", help="undo an exclusion")
+    inc.add_argument("person", type=int)
+    sub.add_parser("excluded", help="list excluded people")
+    ff = sub.add_parser("forget-faces", help="delete all face data")
+    ff.add_argument("--yes", action="store_true")
+    tf = sub.add_parser("try-face", help="tuning: scores of one face against the album")
+    tf.add_argument("file_id", type=int)
+    tf.add_argument("face_index", type=int, nargs="?", default=0)
     args = p.parse_args(argv)
 
     config = Config.from_env()
     config.data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(config.db_path)
+    if args.cmd == "clusters":
+        people: dict[int, list[int]] = {}
+        for r in store.face_rows():
+            people.setdefault(r.cluster or 0, []).append(r.file_id)
+        for c, ids in sorted(people.items(), key=lambda kv: -len(kv[1])):
+            sample = " ".join(map(str, sorted(set(ids))[:8]))
+            print(f"person {c}: {len(ids)} faces, photos {sample}")
+    if args.cmd == "exclude":
+        print(f"excluded {store.exclude_cluster(args.cluster)}")
+    if args.cmd == "include":
+        store.include_person(args.person)
+    if args.cmd == "excluded":
+        for pid, _ in store.excluded_people():
+            print(f"excluded {pid}")
+    if args.cmd == "forget-faces":
+        if not args.yes:
+            p.error("forget-faces deletes all face data; pass --yes")
+        store.forget_faces()
+    if args.cmd == "try-face":
+        rows = store.face_rows()
+        mine = [r for r in rows if r.file_id == args.file_id][args.face_index]
+        scores = sorted(((float(r.emb @ mine.emb), r.file_id) for r in rows if r.file_id != args.file_id), reverse=True)
+        for score, fid in scores[:60]:
+            print(f"{score:.3f} {fid}")
     if args.cmd == "models":
         download_models(config.models_dir)
     if args.cmd == "index":
